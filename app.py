@@ -1,4 +1,4 @@
-# Enhanced AI Trading Dashboard with Custom Ticker Input
+# professional_dashboard.py - Enhanced AI Trading Dashboard with Winners/Losers
 
 import streamlit as st
 import yfinance as yf
@@ -45,245 +45,228 @@ def calculate_bollinger_bands(prices, window=20, num_std=2):
     lower = sma - (std * num_std)
     return upper, sma, lower
 
-def validate_ticker(ticker):
-    """Validate if ticker exists and has data"""
-    try:
-        stock = yf.Ticker(ticker.upper())
-        hist = stock.history(period="5d")
-        if hist.empty:
-            return False, f"No data found for {ticker.upper()}"
-        return True, hist
-    except:
-        return False, f"Invalid ticker symbol: {ticker.upper()}"
+def get_top_movers():
+    """Get top winners and losers from major stocks"""
+    # Major stocks to analyze
+    major_stocks = [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'NFLX',
+        'AMD', 'CRM', 'ADBE', 'PYPL', 'INTC', 'CSCO', 'ORCL', 'IBM',
+        'UBER', 'LYFT', 'SPOT', 'ZM', 'SNOW', 'PLTR', 'RBLX', 'COIN'
+    ]
+    
+    movers_data = []
+    
+    with st.spinner("Fetching market data for top movers..."):
+        for symbol in major_stocks:
+            try:
+                ticker = yf.Ticker(symbol)
+                # Get 2 days of data to calculate change
+                data = ticker.history(period="2d")
+                if len(data) >= 2:
+                    current_price = data['Close'].iloc[-1]
+                    prev_price = data['Close'].iloc[-2]
+                    change_pct = ((current_price - prev_price) / prev_price) * 100
+                    volume = data['Volume'].iloc[-1]
+                    
+                    movers_data.append({
+                        'Symbol': symbol,
+                        'Current Price': current_price,
+                        'Change %': change_pct,
+                        'Volume': volume
+                    })
+            except:
+                continue
+    
+    if movers_data:
+        df = pd.DataFrame(movers_data)
+        df = df.sort_values('Change %', ascending=False)
+        
+        # Top 3 winners and losers
+        winners = df.head(3)
+        losers = df.tail(3)
+        
+        return winners, losers
+    
+    return pd.DataFrame(), pd.DataFrame()
 
-def get_company_info(ticker):
-    """Get company name and basic info"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        company_name = info.get('longName', info.get('shortName', ticker.upper()))
-        sector = info.get('sector', 'N/A')
-        return company_name, sector
-    except:
-        return ticker.upper(), 'N/A'
+def display_movers(winners, losers):
+    """Display top winners and losers in a professional layout"""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📈 **Top Winners**")
+        if not winners.empty:
+            for idx, row in winners.iterrows():
+                delta_color = "normal"
+                col_a, col_b, col_c = st.columns([2, 2, 2])
+                
+                with col_a:
+                    st.markdown(f"**{row['Symbol']}**")
+                
+                with col_b:
+                    st.markdown(f"${row['Current Price']:.2f}")
+                
+                with col_c:
+                    st.markdown(f"<span style='color: green; font-weight: bold;'>+{row['Change %']:.2f}%</span>", 
+                              unsafe_allow_html=True)
+                
+                # Volume info
+                st.markdown(f"<small>Volume: {row['Volume']:,.0f}</small>", 
+                          unsafe_allow_html=True)
+                st.markdown("---")
+        else:
+            st.info("No winner data available")
+    
+    with col2:
+        st.markdown("### 📉 **Top Losers**")
+        if not losers.empty:
+            for idx, row in losers.iterrows():
+                col_a, col_b, col_c = st.columns([2, 2, 2])
+                
+                with col_a:
+                    st.markdown(f"**{row['Symbol']}**")
+                
+                with col_b:
+                    st.markdown(f"${row['Current Price']:.2f}")
+                
+                with col_c:
+                    st.markdown(f"<span style='color: red; font-weight: bold;'>{row['Change %']:.2f}%</span>", 
+                              unsafe_allow_html=True)
+                
+                # Volume info
+                st.markdown(f"<small>Volume: {row['Volume']:,.0f}</small>", 
+                          unsafe_allow_html=True)
+                st.markdown("---")
+        else:
+            st.info("No loser data available")
 
 # Main dashboard
 def main():
-    st.title("🚀 AI Trading Dashboard")
-    st.markdown("Real-time market analysis with technical indicators")
+    # Professional header without emoji
+    st.markdown("""
+    <div style='text-align: center; padding: 20px;'>
+        <h1 style='color: #1f77b4; margin-bottom: 5px;'>AI Trading Dashboard</h1>
+        <h3 style='color: #666; font-weight: 300; margin-top: 0;'>Real-time market analysis with technical indicators</h3>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Sidebar
-    st.sidebar.title("📊 Controls")
+    st.sidebar.title("📊 Dashboard Controls")
     
-    # Custom ticker input section
-    st.sidebar.markdown("### 🔍 Add Custom Ticker")
-    custom_ticker = st.sidebar.text_input(
-        "Enter any stock symbol:",
-        placeholder="e.g., AAPL, TSLA, GME, NVDA",
-        help="Type any valid stock ticker and press Enter"
-    ).upper()
+    # Get top movers first (this will be displayed prominently)
+    winners, losers = get_top_movers()
     
-    # Add button to validate and add ticker
-    add_custom = st.sidebar.button("➕ Add Ticker", help="Add the ticker above to your analysis")
-    
-    # Default stock selection
-    st.sidebar.markdown("### 📈 Popular Stocks")
-    default_stocks = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX']
+    # Stock selection
+    default_stocks = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA']
     selected_stocks = st.sidebar.multiselect(
-        "Select from popular stocks:",
-        options=default_stocks + ['AMD', 'CRM', 'ORCL', 'JPM', 'V', 'DIS', 'COIN', 'SPY', 'QQQ'],
-        default=['AAPL', 'MSFT', 'TSLA']
+        "Select Stocks for Analysis",
+        options=['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'AMZN', 'META', 'NFLX', 'AMD', 'CRM'],
+        default=default_stocks[:3]
     )
     
-    # Initialize session state for custom tickers
-    if 'custom_tickers' not in st.session_state:
-        st.session_state.custom_tickers = []
-    
-    # Handle custom ticker addition
-    if add_custom and custom_ticker:
-        with st.sidebar:
-            with st.spinner(f"Validating {custom_ticker}..."):
-                is_valid, result = validate_ticker(custom_ticker)
-                
-                if is_valid:
-                    if custom_ticker not in st.session_state.custom_tickers:
-                        st.session_state.custom_tickers.append(custom_ticker)
-                        company_name, sector = get_company_info(custom_ticker)
-                        st.success(f"✅ Added {custom_ticker} ({company_name})")
-                    else:
-                        st.info(f"ℹ️ {custom_ticker} already in your list")
-                else:
-                    st.error(f"❌ {result}")
-    
-    # Display custom tickers
-    if st.session_state.custom_tickers:
-        st.sidebar.markdown("### 🎯 Your Custom Tickers")
-        for ticker in st.session_state.custom_tickers:
-            col1, col2 = st.sidebar.columns([3, 1])
-            with col1:
-                st.write(f"📌 {ticker}")
-            with col2:
-                if st.button("❌", key=f"remove_{ticker}", help=f"Remove {ticker}"):
-                    st.session_state.custom_tickers.remove(ticker)
-                    st.experimental_rerun()
-    
-    # Combine all selected tickers
-    all_selected_tickers = list(set(selected_stocks + st.session_state.custom_tickers))
-    
     # Time period
-    st.sidebar.markdown("### ⏰ Time Period")
     period_options = {
         '1 Month': '1mo',
         '3 Months': '3mo', 
         '6 Months': '6mo',
-        '1 Year': '1y',
-        '2 Years': '2y'
+        '1 Year': '1y'
     }
     selected_period = st.sidebar.selectbox(
-        "Historical data period:",
+        "Time Period",
         options=list(period_options.keys()),
         index=1
     )
     
-    # Show current selection
-    if all_selected_tickers:
-        st.sidebar.markdown("### 📋 Currently Analyzing")
-        for ticker in sorted(all_selected_tickers):
-            company_name, sector = get_company_info(ticker)
-            st.sidebar.write(f"• **{ticker}** - {company_name}")
+    # Display top movers prominently at the top
+    st.markdown("## 🏆 Market Leaders")
+    display_movers(winners, losers)
     
-    if not all_selected_tickers:
-        st.warning("Please select stocks from popular list or add custom tickers using the input above.")
-        st.info("💡 **Try adding:** AAPL, TSLA, GME, AMC, NVDA, or any other stock symbol!")
+    st.markdown("---")
+    
+    if not selected_stocks:
+        st.warning("Please select at least one stock from the sidebar for detailed analysis.")
         return
     
-    # Fetch data with progress bar
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    stock_data = {}
-    failed_tickers = []
-    
-    for i, symbol in enumerate(all_selected_tickers):
-        try:
-            status_text.text(f"Fetching data for {symbol}...")
-            progress_bar.progress((i + 1) / len(all_selected_tickers))
-            
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period=period_options[selected_period])
-            if not data.empty:
-                stock_data[symbol] = data
-            else:
-                failed_tickers.append(symbol)
-        except Exception as e:
-            failed_tickers.append(symbol)
-            st.warning(f"Failed to fetch data for {symbol}: {str(e)}")
-    
-    # Clear progress indicators
-    progress_bar.empty()
-    status_text.empty()
-    
-    # Show failed tickers
-    if failed_tickers:
-        st.error(f"❌ Could not fetch data for: {', '.join(failed_tickers)}")
-        # Remove failed custom tickers
-        for ticker in failed_tickers:
-            if ticker in st.session_state.custom_tickers:
-                st.session_state.custom_tickers.remove(ticker)
+    # Fetch data for selected stocks
+    with st.spinner("Fetching detailed market data..."):
+        stock_data = {}
+        for symbol in selected_stocks:
+            try:
+                ticker = yf.Ticker(symbol)
+                data = ticker.history(period=period_options[selected_period])
+                if not data.empty:
+                    stock_data[symbol] = data
+            except:
+                st.error(f"Failed to fetch data for {symbol}")
     
     if not stock_data:
-        st.error("No valid data available. Please try different tickers.")
+        st.error("No data available for selected stocks. Please try again.")
         return
     
-    # Success message
-    st.success(f"✅ Successfully loaded data for {len(stock_data)} stocks: {', '.join(sorted(stock_data.keys()))}")
-    
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "📈 Technical Analysis", "⚡ Signals", "🔮 Predictions"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Portfolio Overview", "📈 Technical Analysis", "⚡ Trading Signals", "🔮 Price Predictions"])
     
     # Tab 1: Overview
     with tab1:
-        st.header("📊 Market Overview")
+        st.header("📊 Portfolio Overview")
         
-        # Current prices in a more compact format
-        if len(stock_data) <= 6:
-            cols = st.columns(len(stock_data))
-        else:
-            # For more than 6 stocks, use multiple rows
-            cols_per_row = 6
-            rows = (len(stock_data) + cols_per_row - 1) // cols_per_row
-            
-        ticker_list = list(stock_data.keys())
+        # Current prices with better styling
+        st.markdown("### Current Positions")
+        cols = st.columns(len(selected_stocks))
+        for i, symbol in enumerate(selected_stocks):
+            if symbol in stock_data:
+                data = stock_data[symbol]
+                current_price = data['Close'].iloc[-1]
+                prev_price = data['Close'].iloc[-2]
+                change = current_price - prev_price
+                change_pct = (change / prev_price) * 100
+                
+                with cols[i]:
+                    # Custom metric display
+                    st.markdown(f"""
+                    <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px; margin: 5px;'>
+                        <h3 style='margin: 0; color: #1f77b4;'>{symbol}</h3>
+                        <h2 style='margin: 5px 0; color: #333;'>${current_price:.2f}</h2>
+                        <p style='margin: 0; color: {"green" if change_pct >= 0 else "red"}; font-weight: bold;'>
+                            {change_pct:+.2f}% (${change:+.2f})
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
         
-        for i, symbol in enumerate(ticker_list):
-            if len(stock_data) <= 6:
-                col_idx = i
-            else:
-                col_idx = i % cols_per_row
-                if col_idx == 0:
-                    cols = st.columns(min(cols_per_row, len(ticker_list) - i))
-            
-            data = stock_data[symbol]
-            current_price = data['Close'].iloc[-1]
-            prev_price = data['Close'].iloc[-2] if len(data) > 1 else current_price
-            change = current_price - prev_price
-            change_pct = (change / prev_price) * 100 if prev_price != 0 else 0
-            
-            with cols[col_idx]:
-                st.metric(
-                    label=symbol,
-                    value=f"${current_price:.2f}",
-                    delta=f"{change_pct:+.2f}%"
+        st.markdown("### Price Charts")
+        # Price charts
+        for symbol in selected_stocks:
+            if symbol in stock_data:
+                data = stock_data[symbol]
+                
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(
+                    x=data.index,
+                    open=data['Open'],
+                    high=data['High'],
+                    low=data['Low'],
+                    close=data['Close'],
+                    name=symbol
+                ))
+                
+                fig.update_layout(
+                    title=f"{symbol} - Price Chart",
+                    xaxis_title="Date",
+                    yaxis_title="Price ($)",
+                    height=500,
+                    template="plotly_white"
                 )
-        
-        # Price charts - show top 4 or selected ones
-        st.subheader("📈 Price Charts")
-        
-        if len(stock_data) > 4:
-            chart_symbols = st.multiselect(
-                "Select stocks to chart (max 4):",
-                options=list(stock_data.keys()),
-                default=list(stock_data.keys())[:4],
-                max_selections=4
-            )
-        else:
-            chart_symbols = list(stock_data.keys())
-        
-        for symbol in chart_symbols:
-            data = stock_data[symbol]
-            company_name, sector = get_company_info(symbol)
-            
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(
-                x=data.index,
-                open=data['Open'],
-                high=data['High'],
-                low=data['Low'],
-                close=data['Close'],
-                name=symbol
-            ))
-            
-            fig.update_layout(
-                title=f"{symbol} - {company_name} ({sector})",
-                xaxis_title="Date",
-                yaxis_title="Price ($)",
-                height=500
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+                
+                st.plotly_chart(fig, use_container_width=True)
     
     # Tab 2: Technical Analysis
     with tab2:
         st.header("📈 Technical Analysis")
         
-        analysis_symbol = st.selectbox("Select Symbol for Detailed Analysis", list(stock_data.keys()))
+        selected_symbol = st.selectbox("Select Symbol for Analysis", selected_stocks)
         
-        if analysis_symbol in stock_data:
-            data = stock_data[analysis_symbol].copy()
-            company_name, sector = get_company_info(analysis_symbol)
-            
-            st.subheader(f"Analysis for {analysis_symbol} - {company_name}")
-            st.write(f"**Sector:** {sector}")
+        if selected_symbol in stock_data:
+            data = stock_data[selected_symbol]
             
             # Calculate indicators
             data['SMA_20'] = data['Close'].rolling(20).mean()
@@ -304,9 +287,9 @@ def main():
             fig = make_subplots(
                 rows=4, cols=1,
                 subplot_titles=[
-                    f"{analysis_symbol} - Price & Moving Averages",
+                    f"{selected_symbol} - Price & Moving Averages",
                     "RSI (Relative Strength Index)",
-                    "MACD", 
+                    "MACD (Moving Average Convergence Divergence)", 
                     "Bollinger Bands"
                 ],
                 vertical_spacing=0.08,
@@ -334,39 +317,70 @@ def main():
             fig.add_trace(go.Scatter(x=data.index, y=data['BB_Middle'], name='BB Middle', line=dict(color='yellow')), row=4, col=1)
             fig.add_trace(go.Scatter(x=data.index, y=data['BB_Lower'], name='BB Lower', line=dict(color='green')), row=4, col=1)
             
-            fig.update_layout(height=1200, showlegend=False)
+            fig.update_layout(height=1200, showlegend=False, template="plotly_white")
             st.plotly_chart(fig, use_container_width=True)
             
-            # Current values
+            # Current values with professional styling
+            st.markdown("### Current Indicator Values")
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 current_rsi = data['RSI'].iloc[-1]
                 rsi_signal = "SELL" if current_rsi > 70 else "BUY" if current_rsi < 30 else "HOLD"
-                st.metric("RSI", f"{current_rsi:.1f}", rsi_signal)
+                rsi_color = "red" if rsi_signal == "SELL" else "green" if rsi_signal == "BUY" else "orange"
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>RSI</h4>
+                    <h3 style='margin: 5px 0;'>{current_rsi:.1f}</h3>
+                    <p style='margin: 0; color: {rsi_color}; font-weight: bold;'>{rsi_signal}</p>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col2:
                 current_macd = data['MACD'].iloc[-1]
                 current_signal = data['MACD_Signal'].iloc[-1]
                 macd_signal = "BUY" if current_macd > current_signal else "SELL"
-                st.metric("MACD Signal", macd_signal, f"{current_macd:.4f}")
+                macd_color = "green" if macd_signal == "BUY" else "red"
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>MACD</h4>
+                    <h3 style='margin: 5px 0;'>{current_macd:.4f}</h3>
+                    <p style='margin: 0; color: {macd_color}; font-weight: bold;'>{macd_signal}</p>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col3:
                 current_price = data['Close'].iloc[-1]
                 sma_20 = data['SMA_20'].iloc[-1]
                 sma_signal = "BUY" if current_price > sma_20 else "SELL"
-                st.metric("vs SMA 20", sma_signal, f"${sma_20:.2f}")
+                sma_color = "green" if sma_signal == "BUY" else "red"
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>vs SMA 20</h4>
+                    <h3 style='margin: 5px 0;'>${sma_20:.2f}</h3>
+                    <p style='margin: 0; color: {sma_color}; font-weight: bold;'>{sma_signal}</p>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col4:
                 bb_upper = data['BB_Upper'].iloc[-1]
                 bb_lower = data['BB_Lower'].iloc[-1]
                 if current_price > bb_upper:
                     bb_signal = "OVERBOUGHT"
+                    bb_color = "red"
                 elif current_price < bb_lower:
                     bb_signal = "OVERSOLD"
+                    bb_color = "green"
                 else:
                     bb_signal = "NEUTRAL"
-                st.metric("Bollinger Position", bb_signal, f"${current_price:.2f}")
+                    bb_color = "orange"
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>Bollinger Bands</h4>
+                    <h3 style='margin: 5px 0;'>${current_price:.2f}</h3>
+                    <p style='margin: 0; color: {bb_color}; font-weight: bold;'>{bb_signal}</p>
+                </div>
+                """, unsafe_allow_html=True)
     
     # Tab 3: Trading Signals
     with tab3:
@@ -374,88 +388,63 @@ def main():
         
         signals_data = []
         
-        for symbol in stock_data.keys():
-            data = stock_data[symbol]
-            
-            # Calculate indicators
-            current_price = data['Close'].iloc[-1]
-            rsi = calculate_rsi(data['Close']).iloc[-1]
-            sma_20 = data['Close'].rolling(20).mean().iloc[-1]
-            sma_50 = data['Close'].rolling(50).mean().iloc[-1]
-            
-            # Generate signals
-            signal_score = 0
-            signals = []
-            
-            if rsi < 30:
-                signal_score += 1
-                signals.append("RSI Oversold")
-            elif rsi > 70:
-                signal_score -= 1
-                signals.append("RSI Overbought")
-            
-            if current_price > sma_20 > sma_50:
-                signal_score += 1
-                signals.append("Uptrend")
-            elif current_price < sma_20 < sma_50:
-                signal_score -= 1
-                signals.append("Downtrend")
-            
-            # Overall signal
-            if signal_score >= 1:
-                overall_signal = "🟢 BUY"
-            elif signal_score <= -1:
-                overall_signal = "🔴 SELL"
-            else:
-                overall_signal = "🟡 HOLD"
-            
-            # Get company name
-            company_name, _ = get_company_info(symbol)
-            
-            signals_data.append({
-                'Symbol': symbol,
-                'Company': company_name[:30] + "..." if len(company_name) > 30 else company_name,
-                'Price': f"${current_price:.2f}",
-                'RSI': f"{rsi:.1f}",
-                'Signal Score': signal_score,
-                'Active Signals': ", ".join(signals) if signals else "None",
-                'Overall Signal': overall_signal
-            })
+        for symbol in selected_stocks:
+            if symbol in stock_data:
+                data = stock_data[symbol]
+                
+                # Calculate indicators
+                current_price = data['Close'].iloc[-1]
+                rsi = calculate_rsi(data['Close']).iloc[-1]
+                sma_20 = data['Close'].rolling(20).mean().iloc[-1]
+                sma_50 = data['Close'].rolling(50).mean().iloc[-1]
+                
+                # Generate signals
+                signal_score = 0
+                signals = []
+                
+                if rsi < 30:
+                    signal_score += 1
+                    signals.append("RSI Oversold")
+                elif rsi > 70:
+                    signal_score -= 1
+                    signals.append("RSI Overbought")
+                
+                if current_price > sma_20 > sma_50:
+                    signal_score += 1
+                    signals.append("Uptrend")
+                elif current_price < sma_20 < sma_50:
+                    signal_score -= 1
+                    signals.append("Downtrend")
+                
+                # Overall signal
+                if signal_score >= 1:
+                    overall_signal = "🟢 BUY"
+                elif signal_score <= -1:
+                    overall_signal = "🔴 SELL"
+                else:
+                    overall_signal = "🟡 HOLD"
+                
+                signals_data.append({
+                    'Symbol': symbol,
+                    'Price': f"${current_price:.2f}",
+                    'RSI': f"{rsi:.1f}",
+                    'Signal Score': signal_score,
+                    'Active Signals': ", ".join(signals) if signals else "None",
+                    'Overall Signal': overall_signal
+                })
         
         if signals_data:
             df = pd.DataFrame(signals_data)
             st.dataframe(df, use_container_width=True)
-            
-            # Summary charts
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Signal distribution
-                signal_counts = df['Overall Signal'].value_counts()
-                fig_pie = px.pie(values=signal_counts.values, names=signal_counts.index, 
-                               title="Signal Distribution")
-                st.plotly_chart(fig_pie, use_container_width=True)
-            
-            with col2:
-                # RSI distribution
-                rsi_values = [float(x) for x in df['RSI']]
-                fig_hist = px.histogram(x=rsi_values, title="RSI Distribution", 
-                                      labels={'x': 'RSI Value', 'y': 'Count'})
-                fig_hist.add_vline(x=30, line_dash="dash", line_color="green", annotation_text="Oversold")
-                fig_hist.add_vline(x=70, line_dash="dash", line_color="red", annotation_text="Overbought")
-                st.plotly_chart(fig_hist, use_container_width=True)
     
     # Tab 4: Simple Predictions
     with tab4:
         st.header("🔮 Price Predictions")
         
-        pred_symbol = st.selectbox("Select Symbol for Prediction", list(stock_data.keys()), key="pred_symbol")
+        selected_symbol = st.selectbox("Select Symbol for Prediction", selected_stocks, key="pred_symbol")
         
-        if pred_symbol in stock_data:
-            data = stock_data[pred_symbol]
-            company_name, sector = get_company_info(pred_symbol)
-            
-            st.subheader(f"Prediction for {pred_symbol} - {company_name}")
+        if selected_symbol in stock_data:
+            data = stock_data[selected_symbol]
             
             # Simple moving average prediction
             current_price = data['Close'].iloc[-1]
@@ -470,15 +459,32 @@ def main():
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.metric("Current Price", f"${current_price:.2f}")
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>Current Price</h4>
+                    <h2 style='margin: 5px 0; color: #1f77b4;'>${current_price:.2f}</h2>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col2:
                 change_pct = predicted_change * 100
-                st.metric("Predicted Price (5 days)", f"${predicted_price:.2f}", f"{change_pct:+.2f}%")
+                change_color = "green" if change_pct >= 0 else "red"
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>Predicted Price (5 days)</h4>
+                    <h2 style='margin: 5px 0; color: #1f77b4;'>${predicted_price:.2f}</h2>
+                    <p style='margin: 0; color: {change_color}; font-weight: bold;'>{change_pct:+.2f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col3:
                 confidence = min(80, max(20, 60 - abs(momentum * 100)))
-                st.metric("Confidence", f"{confidence:.0f}%")
+                st.markdown(f"""
+                <div style='text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 10px;'>
+                    <h4 style='margin: 0;'>Confidence</h4>
+                    <h2 style='margin: 5px 0; color: #1f77b4;'>{confidence:.0f}%</h2>
+                </div>
+                """, unsafe_allow_html=True)
             
             # Simple chart
             future_date = data.index[-1] + timedelta(days=5)
@@ -497,42 +503,19 @@ def main():
                 y=[current_price, predicted_price],
                 mode='lines+markers',
                 name='Prediction',
-                line=dict(dash='dash', color='red'),
-                marker=dict(size=8)
+                line=dict(dash='dash', color='red', width=3)
             ))
             
             fig.update_layout(
-                title=f"{pred_symbol} - Simple Price Prediction",
+                title=f"{selected_symbol} - Price Prediction",
                 xaxis_title="Date",
                 yaxis_title="Price ($)",
-                height=500
+                template="plotly_white"
             )
             
             st.plotly_chart(fig, use_container_width=True)
             
             st.info("📝 This is a simple prediction based on recent momentum. For more accurate predictions, advanced ML models would be needed.")
-            
-            # Additional stats
-            st.subheader("📊 Additional Statistics")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                volatility = data['Close'].pct_change().std() * np.sqrt(252) * 100
-                st.metric("Annual Volatility", f"{volatility:.1f}%")
-            
-            with col2:
-                ytd_return = ((current_price - data['Close'].iloc[0]) / data['Close'].iloc[0]) * 100
-                st.metric("Period Return", f"{ytd_return:.1f}%")
-            
-            with col3:
-                avg_volume = data['Volume'].mean() / 1e6
-                st.metric("Avg Volume", f"{avg_volume:.1f}M")
-            
-            with col4:
-                high_52w = data['High'].max()
-                low_52w = data['Low'].min()
-                range_position = ((current_price - low_52w) / (high_52w - low_52w)) * 100
-                st.metric("Range Position", f"{range_position:.1f}%")
 
 if __name__ == "__main__":
     main()
